@@ -1,5 +1,7 @@
+#!/usr/bin/env python3
+
 #Name: Wood
-#Info: Vary the print temperature troughout the print to create wood rings with some printing material such as the LayWoo. The higher the temperature, the darker the print.
+#Info: Vary the print temperature throughout the print to create wood rings with some printing material such as the LayWoo. The higher the temperature, the darker the print.
 #Depend: GCode
 #Type: postprocess
 #Param: minTemp(float:180) Minimum print temperature (degree C)
@@ -40,8 +42,6 @@ import getopt
 #   wood_standalone.py --min minTemp --max maxTemp --grain grainSize --file gcodeFile
 # It will "patch" your gcode file with the appropriate M104 temperature change.
 #
-
-# TODO: support  UTF8 for both python3 and 2, e.g. open(filename, "r", encoding="utf_8")
 
 def plugin_standalone_usage(myName):
     print("Usage:")
@@ -116,10 +116,10 @@ except NameError:
 
 
 def get_value(gcode_line, key, default=None):
-    if not key in gcode_line or (';' in gcode_line and gcode_line.find(key) > gcode_line.find(';')):
+    if key not in gcode_line or (';' in gcode_line and gcode_line.find(key) > gcode_line.find(';')):
         return default
     sub_part = gcode_line[gcode_line.find(key) + 1:]
-    m = re.search('^[0-9]+\.?[0-9]*', sub_part)
+    m = re.search(r'^[0-9]+\.?[0-9]*', sub_part)
     if m is None:
         return default
     try:
@@ -138,12 +138,6 @@ def get_z(line, default=None):
         return default
 
 
-try:
-    xrange  # python 2.7 vs 3 compatibility
-except NameError:
-    xrange = range
-
-
 class Perlin:
     # Perlin noise: http://mrl.nyu.edu/~perlin/noise/
 
@@ -152,10 +146,11 @@ class Perlin:
         self.perm = [None] * 2 * tile_dimension
 
         permutation = []
-        for value in xrange(tile_dimension): permutation.append(value)
+        for value in range(tile_dimension): 
+            permutation.append(value)
         random.shuffle(permutation)
 
-        for i in xrange(tile_dimension):
+        for i in range(tile_dimension):
             self.perm[i] = permutation[i]
             self.perm[tile_dimension + i] = self.perm[i]
 
@@ -224,7 +219,7 @@ class Perlin:
         value = 0.0
         amplitude = 1.0
         total_amplitude = 0.0
-        for octave in xrange(octaves):
+        for octave in range(octaves):
             n = self.noise(x * frequency, y * frequency, z * frequency)
             value += amplitude * n
             total_amplitude += amplitude
@@ -233,7 +228,7 @@ class Perlin:
         return value / total_amplitude
 
 
-with open(filename, "r") as f:
+with open(filename, "r", encoding="utf-8") as f:
     lines = f.readlines()
 
 
@@ -255,7 +250,7 @@ for line in lines:
 if eol == "#":
     eol = "\n"  # uh oh empty file?
 
-"First pass generates the noise curve. We will normalize it as the user expects to reach the min & max temperatures"
+# First pass generates the noise curve. We will normalize it as the user expects to reach the min & max temperatures
 perlin = Perlin()
 
 
@@ -263,7 +258,7 @@ def perlin_to_normalized_wood(z):
     banding = 3
     octaves = 2
     persistence = 0.7
-    noise = banding * perlin.fractal(octaves, persistence, 0, 0, (z + zOffset) / (grainSize * 2));
+    noise = banding * perlin.fractal(octaves, persistence, 0, 0, (z + zOffset) / (grainSize * 2))
     noise = (noise - math.floor(noise))  # normalized to [0,1]
     noise = math.pow(noise, spikinessPower)
     return noise
@@ -304,6 +299,8 @@ def z_hop_scan_ahead(index, z):
     if scanForZHop == 0:
         return False  # Do not scan ahead
     for i in range(scanForZHop):
+        if index + i >= len(lines):
+            break
         checkZ = get_z(lines[index + i], z)
         if checkZ < z:
             return True  # Found z-hop
@@ -313,7 +310,10 @@ def z_hop_scan_ahead(index, z):
 #
 # Now save the file with the patched M104 temperature settings
 #
-with open(filename, "w") as f:
+
+name, extension = filename.rsplit('.', 1)
+new_filename = name + "_woodified" + extension
+with open(new_filename, "w", encoding="utf-8") as f:
     # Prepare a transposed ASCII-art temperature graph for the end of the file
 
     f.write(";woodified gcode, see graph at the end - jeremie.francois@gmail.com - generated on " +
@@ -357,10 +357,10 @@ with open(filename, "w") as f:
             skip_lines -= 1
         elif ";woodified" in line.lower():
             skip_lines = 4  # skip 4 more lines after our comment
-        elif not ";woodgraph" in line.lower():  # forget optional former temp graph lines in the file
+        elif ";woodgraph" not in line.lower():  # forget optional former temp graph lines in the file
             if thisZ == maxZ:
                 f.write(line)  # no more patch, keep the important end scripts unchanged
-            elif not "m104" in line.lower():  # forget any previous temp in the file
+            elif "m104" not in line.lower():  # forget any previous temp in the file
                 thisZ = get_z(line, formerZ)
                 if thisZ != formerZ and thisZ in noises and not z_hop_scan_ahead(index, thisZ):
 
